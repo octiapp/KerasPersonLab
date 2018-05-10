@@ -16,7 +16,7 @@ After eveything is configured to your liking, go ahead and run the train.py scri
 
 ## Testing a model
 
-See the [demo.ipynb](demo.ipynb) for sample inference and visualizations. (To be uploaded soon)
+See the [demo.ipynb](demo.ipynb) for sample inference and visualizations.
 
 ## Technical Debts
 Several parts of this codebase are borrowed from others. These include:
