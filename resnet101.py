@@ -10,8 +10,12 @@ from keras import initializers
 from keras.engine.topology import get_source_inputs
 from keras.engine import Layer, InputSpec
 from keras.utils.data_utils import get_file
+from frozen_batchnorm import FrozenBatchNorm
 
-# imagenet weights
+if config.BATCH_NORM_FROZEN:
+    BatchNormalization = FrozenBatchNorm
+else:
+    BatchNormalization = KL.BatchNormalization
 
 def identity_block(input_tensor, kernel_size, filters, stage, block, dilation=1):
     '''The identity_block is the block that has no conv layer at shortcut
@@ -29,17 +33,17 @@ def identity_block(input_tensor, kernel_size, filters, stage, block, dilation=1)
     bn_name_base = 'bn' + str(stage) + block + '_branch'
 
     x = KL.Conv2D(nb_filter1, (1, 1), name=conv_name_base + '2a', use_bias=False)(input_tensor)
-    x = KL.BatchNormalization(epsilon=eps, axis=bn_axis, name=bn_name_base + '2a')(x)
+    x = BatchNormalization(epsilon=eps, axis=bn_axis, name=bn_name_base + '2a')(x)
     x = KL.Activation('relu', name=conv_name_base + '2a_relu')(x)
 
     # x = KL.ZeroPadding2D((1, 1), name=conv_name_base + '2b_ZeroPadding')(x)
     x = KL.Conv2D(nb_filter2, (kernel_size, kernel_size), padding='same',
                       name=conv_name_base + '2b', use_bias=False, dilation_rate=dilation)(x)
-    x = KL.BatchNormalization(epsilon=eps, axis=bn_axis, name=bn_name_base + '2b')(x)
+    x = BatchNormalization(epsilon=eps, axis=bn_axis, name=bn_name_base + '2b')(x)
     x = KL.Activation('relu', name=conv_name_base + '2b_relu')(x)
 
     x = KL.Conv2D(nb_filter3, (1, 1), name=conv_name_base + '2c', use_bias=False)(x)
-    x = KL.BatchNormalization(epsilon=eps, axis=bn_axis, name=bn_name_base + '2c')(x)
+    x = BatchNormalization(epsilon=eps, axis=bn_axis, name=bn_name_base + '2c')(x)
 
     x = KL.add([x, input_tensor], name='res' + str(stage) + block)
     x = KL.Activation('relu', name='res' + str(stage) + block + '_relu')(x)
@@ -64,21 +68,21 @@ def conv_block(input_tensor, kernel_size, filters, stage, block, strides=(2, 2),
 
     x = KL.Conv2D(nb_filter1, (1, 1), strides=strides,
                       name=conv_name_base + '2a', use_bias=False)(input_tensor)
-    x = KL.BatchNormalization(epsilon=eps, axis=bn_axis, name=bn_name_base + '2a')(x)
+    x = BatchNormalization(epsilon=eps, axis=bn_axis, name=bn_name_base + '2a')(x)
     x = KL.Activation('relu', name=conv_name_base + '2a_relu')(x)
 
     # x = KL.ZeroPadding2D((1, 1), name=conv_name_base + '2b_ZeroPadding')(x)
     x = KL.Conv2D(nb_filter2, (kernel_size, kernel_size), padding='same',
                       name=conv_name_base + '2b', use_bias=False, dilation_rate=dilation)(x)
-    x = KL.BatchNormalization(epsilon=eps, axis=bn_axis, name=bn_name_base + '2b')(x)
+    x = BatchNormalization(epsilon=eps, axis=bn_axis, name=bn_name_base + '2b')(x)
     x = KL.Activation('relu', name=conv_name_base + '2b_relu')(x)
 
     x = KL.Conv2D(nb_filter3, (1, 1), name=conv_name_base + '2c', use_bias=False)(x)
-    x = KL.BatchNormalization(epsilon=eps, axis=bn_axis, name=bn_name_base + '2c')(x)
+    x = BatchNormalization(epsilon=eps, axis=bn_axis, name=bn_name_base + '2c')(x)
 
     shortcut = KL.Conv2D(nb_filter3, (1, 1), strides=strides,
                              name=conv_name_base + '1', use_bias=False)(input_tensor)
-    shortcut = KL.BatchNormalization(epsilon=eps, axis=bn_axis, name=bn_name_base + '1')(shortcut)
+    shortcut = BatchNormalization(epsilon=eps, axis=bn_axis, name=bn_name_base + '1')(shortcut)
 
     x = KL.add([x, shortcut], name='res' + str(stage) + block)
     x = KL.Activation('relu', name='res' + str(stage) + block + '_relu')(x)
@@ -98,7 +102,7 @@ def get_resnet101_base(input_tensor, output_stride=8, return_model=False):
 
     # x = KL.ZeroPadding2D((3, 3), name='conv1_ZeroPadding')(input_tensor)
     x = KL.Conv2D(64, (7, 7), strides=(2, 2), name='conv1', use_bias=False, padding='same',)(input_tensor)
-    x = KL.BatchNormalization(epsilon=eps, axis=bn_axis, name='bn_conv1')(x)
+    x = BatchNormalization(epsilon=eps, axis=bn_axis, name='bn_conv1')(x)
     x = KL.Activation('relu', name='conv1_relu')(x)
     x = KL.MaxPooling2D((3, 3), strides=(2, 2), name='pool1')(x)
 
