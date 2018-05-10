@@ -160,7 +160,7 @@ def get_losses(ground_truth, outputs):
     return losses
 
 def get_personlab(train=False, input_tensors=None, with_preprocess_lambda=True, build_base_func=get_resnet101_base,
-                  intermediate_supervision=False, intermediate_layer=None):
+                  intermediate_supervision=False, intermediate_layer=None, output_stride=config.OUTPUT_STRIDE):
     '''
     Constructs the PersonLab model and returns the model object without compiling
 
@@ -205,9 +205,9 @@ def get_personlab(train=False, input_tensors=None, with_preprocess_lambda=True, 
         normalized_img = KL.Lambda(lambda t: t/255. - 0.5)(input_img)
 
     if with_preprocess_lambda not in [False, 0, None]:
-        base_model = build_base_func(input_tensor=normalized_img, output_stride=config.OUTPUT_STRIDE, return_model=True)
+        base_model = build_base_func(input_tensor=normalized_img, output_stride=output_stride, return_model=True)
     else:
-        base_model = build_base_func(input_tensor=input_img, output_stride=config.OUTPUT_STRIDE, return_model=True)
+        base_model = build_base_func(input_tensor=input_img, output_stride=output_stride, return_model=True)
     features = base_model.output
 
     if not train:

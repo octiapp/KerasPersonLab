@@ -66,11 +66,11 @@ class config:
     KP_RADIUS = 32
 
     # The threshold for extracting keypoints from hough maps.
-    PEAK_THRESH = 0.05
+    PEAK_THRESH = 0.004
 
     # Pixel distance threshold for whether to begin a new skeleton instance
     # (If another skeleton already has this keypoint within the threshold, it is discarded.)
-    NMS_THRESH = 10
+    NMS_THRESH = 32
 
     # The metric threshold for assigning a pixel to a given instance mask 
     INSTANCE_SEG_THRESH = 0.25
