@@ -137,7 +137,7 @@ def group_skeletons(keypoints, mid_offsets):
     return skeletons
 
 
-def get_instance_masks(skeletons, seg_mask, long_offsets):
+def get_instance_masks(skeletons, seg_mask, long_offsets, threshold=True):
     map_shape = seg_mask.shape[:2]
     idx = np.rollaxis(np.indices(map_shape[::-1]), 0, 3).transpose((1,0,2))
     features = np.tile(idx, config.NUM_KP) + long_offsets
@@ -170,8 +170,10 @@ def get_instance_masks(skeletons, seg_mask, long_offsets):
     # This should really use the instance mask distance threshold,
     # but for now is just assigns all pixels in the seg mask to an instance
     # mask for which the metric distance is lowest
-    masks[P.min(axis=-1) > 999., :] = 0
-
+    if threshold:
+        masks[P.min(axis=-1) > config.INSTANCE_SEG_THRESH, :] = 0
+    else:
+        masks[P.min(axis=-1) > 999., :] = 0
     return [np.squeeze(m) for m in np.split(masks, num_skels, axis=-1)]
 
 
