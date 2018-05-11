@@ -11,6 +11,7 @@ from keras.engine.topology import get_source_inputs
 from keras.engine import Layer, InputSpec
 from keras.utils.data_utils import get_file
 from frozen_batchnorm import FrozenBatchNorm
+from config import config
 
 if config.BATCH_NORM_FROZEN:
     BatchNormalization = FrozenBatchNorm
@@ -36,7 +37,6 @@ def identity_block(input_tensor, kernel_size, filters, stage, block, dilation=1)
     x = BatchNormalization(epsilon=eps, axis=bn_axis, name=bn_name_base + '2a')(x)
     x = KL.Activation('relu', name=conv_name_base + '2a_relu')(x)
 
-    # x = KL.ZeroPadding2D((1, 1), name=conv_name_base + '2b_ZeroPadding')(x)
     x = KL.Conv2D(nb_filter2, (kernel_size, kernel_size), padding='same',
                       name=conv_name_base + '2b', use_bias=False, dilation_rate=dilation)(x)
     x = BatchNormalization(epsilon=eps, axis=bn_axis, name=bn_name_base + '2b')(x)
