@@ -62,7 +62,7 @@ class RawDataIterator:
         num_instances = int(encoding.max())
         instance_masks = np.zeros((encoding.shape+(num_instances,)))
         for i in range(num_instances):
-            instance_masks[:,:,i] = encoding==i
+            instance_masks[:,:,i] = encoding==i+1
 
         overlap_mask = np.zeros_like(seg_mask)
         if instance_masks.shape[0] > 1:
