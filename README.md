@@ -27,3 +27,12 @@ Several parts of this codebase are borrowed from others. These include:
 
 * The Polyak Averaging callback is just a lightly modified version of the EMA callback from [here](https://github.com/alno/kaggle-allstate-claims-severity/blob/master/keras_util.py)
 
+## Environment
+This code was tested in the following environment and with the following software versions:
+
+* Ubuntu 16.04
+* CUDA 8.0 with cudNN 6.0
+* Python 2.7
+* Tensorflow 1.7
+* Keras 2.1.3
+* OpenCV 2.4.9
