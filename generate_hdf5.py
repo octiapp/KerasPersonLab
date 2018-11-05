@@ -48,9 +48,10 @@ for i, img_id in enumerate(tqdm(img_ids)):
     
     encoding = np.argmax(np.stack([np.zeros((h,w))]+instance_masks, axis=-1), axis=-1).astype('uint8')
     encoding = np.unpackbits(np.expand_dims(encoding, axis=-1), axis=-1)
-    # No image has more than 63 instance annotations, so the first 2 channels are zeros
+    # No image has more than 31 instance annotations, so the first 2 channels are zeros
     encoding[:,:,0] = unannotated_mask.astype('uint8')
     encoding[:,:,1] = crowd_mask.astype('uint8')
+    encoding[:,:,2] = (sum(instance_masks) > 1).astype('uint8')
     encoding = np.packbits(encoding, axis=-1)
 
     np_data = np.concatenate([img, encoding], axis=-1)
