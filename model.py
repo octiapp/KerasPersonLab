@@ -12,8 +12,8 @@ from keras import models as KM
 from keras import losses
 
 from resnet101 import get_resnet101_base
-from resnet50 import get_resnet50_base
-from bilinear import bilinear_sampler
+from resnet50 import ResNet50
+# from bilinear import bilinear_sampler
 from config import config
 import numpy as np
 import tensorflow as tf
@@ -33,11 +33,11 @@ def tf_repeat(tensor, repeats):
     
     A Tensor. Has the same type as input. Has the shape of tensor.shape * repeats
     """
-    with KB.tf.variable_scope("repeat"):
-        expanded_tensor = KB.tf.expand_dims(tensor, -1)
+    with tf.variable_scope("repeat"):
+        expanded_tensor = tf.expand_dims(tensor, -1)
         multiples = [1] + repeats
-        tiled_tensor = KB.tf.tile(expanded_tensor, multiples = multiples)
-        repeated_tensor = KB.tf.reshape(tiled_tensor, KB.tf.shape(tensor) * repeats)
+        tiled_tensor = tf.tile(expanded_tensor, multiples = multiples)
+        repeated_tensor = tf.reshape(tiled_tensor, tf.shape(tensor) * repeats)
     return repeated_tensor
 
 
@@ -50,81 +50,94 @@ def refine(inputs, num_steps=2):
 
     return base
 
-
-def split_and_refine_mid_offsets(mid_offsets, short_offsets):
-
-    output_mid_offsets = []
-    for mid_idx, edge in enumerate(config.EDGES + [edge[::-1] for edge in config.EDGES]):
-        to_keypoint = edge[1]
-        kp_short_offsets = KL.Lambda(lambda t: t[:,:,:,2*to_keypoint:2*to_keypoint+2])(short_offsets)
-        kp_mid_offsets = KL.Lambda(lambda t: t[:,:,:,2*mid_idx:2*mid_idx+2])(mid_offsets)
-        kp_mid_offsets = KL.Lambda(lambda t: refine(t))([kp_mid_offsets, kp_short_offsets])
-        output_mid_offsets.append(kp_mid_offsets)
-
-    return KL.Lambda(lambda t: KB.concatenate(t, axis=-1))(output_mid_offsets)
-
-
-def split_and_refine_long_offsets(long_offsets, short_offsets):
-
-    output_long_offsets = []
-    for i in range(config.NUM_KP):
-        kp_long_offsets = KL.Lambda(lambda t: t[:,:,:,2*i:2*i+2])(long_offsets)
-        kp_short_offsets = KL.Lambda(lambda t: t[:,:,:,2*i:2*i+2])(short_offsets)
-        refined_1 = KL.Lambda(lambda t: refine(t))([kp_long_offsets, kp_long_offsets])
-        refined_2 = KL.Lambda(lambda t: refine(t))([refined_1, kp_short_offsets])
-        output_long_offsets.append(refined_2)
-
-    return KL.Lambda(lambda t: KB.concatenate(t, axis=-1))(output_long_offsets)
+def sync_shapes(tensors):
+    shapes = [KB.int_shape(t) for t in tensors]
+    if all([s[1] is None for s in shapes]) or all([s[2] is None for s in shapes]):
+        return
+    heights = [s[1] for s in shapes if s[1]!=None]
+    widths = [s[2] for s in shapes if s[2]!=None]
+    if len(set(heights))!=1 or len(set(widths))!=1:
+        raise ValueError('mismatching spatial dims in sync_shapes')
+    target_h, target_w = heights[0], widths[0]
+    for i, t in enumerate(tensors):
+        if None in shapes[i][1:3]:
+            t._keras_shape = shapes[i][:1]+(target_h, target_w)+shapes[i][3:]
 
 
-def kp_map_loss(x):
-    kp_maps_true, kp_maps_pred, unannotated_mask, crowd_mask = x
-    loss = KB.mean(KB.binary_crossentropy(kp_maps_true, kp_maps_pred), axis=-1, keepdims=True)
-    loss = loss * crowd_mask * unannotated_mask
-    return KB.mean(loss, keepdims=True) * config.LOSS_WEIGHTS['heatmap']
+
+def refine_mid_offsets(x):
+
+    # output_mid_offsets = []
+    # for mid_idx, edge in enumerate(config.EDGES + [edge[::-1] for edge in config.EDGES]):
+    #     to_keypoint = edge[1]
+    #     kp_short_offsets = KL.Lambda(lambda t: t[:,:,:,2*to_keypoint:2*to_keypoint+2])(short_offsets)
+    #     kp_mid_offsets = KL.Lambda(lambda t: t[:,:,:,2*mid_idx:2*mid_idx+2])(mid_offsets)
+    #     kp_mid_offsets = KL.Lambda(lambda t: refine(t))([kp_mid_offsets, kp_short_offsets])
+    #     output_mid_offsets.append(kp_mid_offsets)
+
+    # return KL.Lambda(lambda t: KB.concatenate(t, axis=-1))(output_mid_offsets)
+
+    mid_offsets, short_offsets = x
+
+    in_shape = tf.shape(short_offsets)
+    idx = tf.cast(tf.expand_dims(tf.stack(tf.meshgrid(tf.range(in_shape[1]), tf.range(in_shape[2]), indexing='ij')[::-1], axis=-1), axis=0), tf.float32)
+    short_offset_inds = [edge[1] for edge in config.EDGES + [edge[::-1] for edge in config.EDGES]]
+    mid_offsets = tf.reshape(mid_offsets, [in_shape[0], in_shape[1], in_shape[2], config.NUM_EDGES*2, 2]) # now shape=(N, H, W, 32, 2)
+    mid_offsets = tf.reshape(tf.transpose(mid_offsets, [0,3,1,2,4]), [in_shape[0]*config.NUM_EDGES*2, in_shape[1], in_shape[2], 2])
+    mid_offsets += idx
+    
+    
+    short_offsets = tf.transpose(tf.reshape(short_offsets, [in_shape[0], in_shape[1], in_shape[2], config.NUM_KP, 2]), [3,0,1,2,4]) # now shape=(17, batch, H, W, 2)
+    short_offsets = tf.gather(short_offsets, short_offset_inds) # now shape=(32, batch, H, W, 2)
+    short_offsets = tf.reshape(tf.transpose(short_offsets, [1,0,2,3,4]), [in_shape[0]*config.NUM_EDGES*2, in_shape[1], in_shape[2], 2]) # now shape=(32*batch,H,W,2)
+
+    for _ in range(config.NUM_REFINEMENTS):
+        mid_offsets = mid_offsets + tf.contrib.resampler.resampler(short_offsets, mid_offsets)
+
+    mid_offsets -= idx
+    mid_offsets = tf.reshape(mid_offsets, [in_shape[0], config.NUM_EDGES*2, in_shape[1], in_shape[2], 2])
+    mid_offsets = tf.reshape(tf.transpose(mid_offsets, [0,2,3,1,4]), [in_shape[0], in_shape[1], in_shape[2], 4*config.NUM_EDGES])
+    
+    return mid_offsets
 
 
-def short_offset_loss(x):
-    short_offset_true, short_offset_pred, kp_maps_true = x
-    loss = KB.abs(short_offset_pred - short_offset_true) / config.KP_RADIUS
-    loss = loss * tf_repeat(kp_maps_true, [1,1,1,2])
-    loss = KB.sum(loss, keepdims=True) / (KB.sum(kp_maps_true) + KB.epsilon())
-    return loss * config.LOSS_WEIGHTS['short']
+def refine_long_offsets(x):
 
+    # output_long_offsets = []
+    # for i in range(config.NUM_KP):
+    #     kp_long_offsets = KL.Lambda(lambda t: t[:,:,:,2*i:2*i+2])(long_offsets)
+    #     kp_short_offsets = KL.Lambda(lambda t: t[:,:,:,2*i:2*i+2])(short_offsets)
+    #     refined_1 = KL.Lambda(lambda t: refine(t))([kp_long_offsets, kp_long_offsets])
+    #     refined_2 = KL.Lambda(lambda t: refine(t))([refined_1, kp_short_offsets])
+    #     output_long_offsets.append(refined_2)
 
-def mid_offset_loss(x):
-    mid_offset_true, mid_offset_pred, kp_maps_true = x
-    loss = KB.abs(mid_offset_pred - mid_offset_true) / config.KP_RADIUS
-    reordered_maps = []
-    for mid_idx, edge in enumerate(config.EDGES + [edge[::-1] for edge in config.EDGES]):
-        from_kp = edge[0]
-        reordered_maps.extend([kp_maps_true[:,:,:,from_kp], kp_maps_true[:,:,:,from_kp]])
-    reordered_maps = KB.stack(reordered_maps, axis=-1)
-    loss = loss * reordered_maps
-    loss = KB.sum(loss, keepdims=True) / (KB.sum(reordered_maps)+KB.epsilon())
-    return loss * config.LOSS_WEIGHTS['mid']
+    # return KL.Lambda(lambda t: KB.concatenate(t, axis=-1))(output_long_offsets)
+    long_offsets, short_offsets = x
 
+    in_shape = tf.shape(long_offsets)
+    idx = tf.cast(tf.expand_dims(tf.stack(tf.meshgrid(tf.range(in_shape[1]), tf.range(in_shape[2]), indexing='ij')[::-1], axis=-1), axis=0), tf.float32)
+    long_offsets = tf.reshape(long_offsets, [in_shape[0], in_shape[1], in_shape[2], config.NUM_KP, 2])
+    long_offsets = tf.reshape(tf.transpose(long_offsets, [0,3,1,2,4]), [in_shape[0]*config.NUM_KP, in_shape[1], in_shape[2], 2])
+    long_offsets += idx
 
-def segmentation_loss(x):
-    seg_true, seg_pred, crowd_mask = x
-    loss = KB.binary_crossentropy(seg_true, seg_pred)
-    loss = loss * crowd_mask
-    return KB.mean(loss, keepdims=True) * config.LOSS_WEIGHTS['seg']
+    short_offsets = tf.reshape(short_offsets, [in_shape[0], in_shape[1], in_shape[2], config.NUM_KP, 2])
+    short_offsets = tf.reshape(tf.transpose(short_offsets, [0,3,1,2,4]), [in_shape[0]*config.NUM_KP, in_shape[1], in_shape[2], 2])
 
+    for _ in range(config.NUM_REFINEMENTS):
+        long_offsets = long_offsets + tf.contrib.resampler.resampler(short_offsets, long_offsets)
 
-def long_offset_loss(x):
-    long_offset_true, long_offset_pred, seg_true, crowd_mask, unannotated_mask, overlap_mask = x
-    loss = KB.abs(long_offset_pred - long_offset_true) / config.KP_RADIUS
-    instances = seg_true * crowd_mask * unannotated_mask * overlap_mask
-    loss = loss * instances
-    # loss = loss * KB.cast(KB.not_equal(long_offset_true, 0.), KB.floatx())
-    # loss = loss * crowd_mask * unannotated_mask * overlap_mask
-    loss = KB.sum(loss, keepdims=True) / (KB.sum(instances)+KB.epsilon())
-    return loss * config.LOSS_WEIGHTS['long']
+    long_offsets -= idx
+    long_offsets = tf.reshape(long_offsets, [in_shape[0], config.NUM_KP, in_shape[1], in_shape[2], 2])
+    long_offsets = tf.reshape(tf.transpose(long_offsets, [0,2,3,1,4]), [in_shape[0], in_shape[1], in_shape[2], 2*config.NUM_KP])
 
-def build_personlab_head(features, img_shape, id):
+    return long_offsets
 
-    sfx = '_'+str(id)
+def build_personlab_head(features, img_shape, suffix=''):
+
+    if suffix in [None, '']:
+        sfx = ''
+    else:
+        sfx = '_'+str(suffix)
 
     kp_maps = KL.Conv2D(config.NUM_KP, kernel_size=(1,1), activation='sigmoid', name='kp_maps'+sfx)(features)
     short_offsets = KL.Conv2D(2*config.NUM_KP, kernel_size=(1,1), name='short_offsets'+sfx)(features)
@@ -133,39 +146,26 @@ def build_personlab_head(features, img_shape, id):
     seg_mask = KL.Conv2D(1, kernel_size=(1,1), activation='sigmoid', name='segmentation'+sfx)(features)
     long_offsets = KL.Conv2D(2*config.NUM_KP, kernel_size=(1,1), name='long_offsets'+sfx)(features)
 
-    kp_maps = KL.Lambda(lambda t: KB.tf.image.resize_bilinear(t, img_shape, align_corners=True))(kp_maps)
-    short_offsets = KL.Lambda(lambda t: KB.tf.image.resize_bilinear(t, img_shape, align_corners=True))(short_offsets)
-    mid_offsets = KL.Lambda(lambda t: KB.tf.image.resize_bilinear(t, img_shape, align_corners=True))(mid_offsets)
-    long_offsets = KL.Lambda(lambda t: KB.tf.image.resize_bilinear(t, img_shape, align_corners=True))(long_offsets)
-    seg_mask = KL.Lambda(lambda t: KB.tf.image.resize_bilinear(t, img_shape, align_corners=True))(seg_mask)
+    kp_maps = KL.Lambda(lambda t: tf.image.resize_bilinear(t, img_shape, align_corners=True))(kp_maps)
+    short_offsets = KL.Lambda(lambda t: tf.image.resize_bilinear(t, img_shape, align_corners=True))(short_offsets)
+    mid_offsets = KL.Lambda(lambda t: tf.image.resize_bilinear(t, img_shape, align_corners=True))(mid_offsets)
+    long_offsets = KL.Lambda(lambda t: tf.image.resize_bilinear(t, img_shape, align_corners=True))(long_offsets)
+    seg_mask = KL.Lambda(lambda t: tf.image.resize_bilinear(t, img_shape, align_corners=True))(seg_mask)
 
-    mid_offsets = split_and_refine_mid_offsets(mid_offsets, short_offsets)
-    long_offsets = split_and_refine_long_offsets(long_offsets, short_offsets)
-    
+    mid_offsets = KL.Lambda(refine_mid_offsets)([mid_offsets, short_offsets])
+    long_offsets = KL.Lambda(refine_long_offsets)([long_offsets, short_offsets])
+
     outputs = [kp_maps, short_offsets, mid_offsets, long_offsets, seg_mask]
 
     return outputs
 
-def get_losses(ground_truth, outputs):
-    kp_maps_true, short_offset_true, mid_offset_true, long_offset_true, seg_true, crowd_mask, unannotated_mask, overlap_mask = ground_truth
-    kp_maps, short_offsets, mid_offsets, long_offsets, seg_mask = outputs
 
-    losses = []
-    losses.append(KL.Lambda(kp_map_loss)([kp_maps_true, kp_maps, unannotated_mask, crowd_mask]))
-    losses.append(KL.Lambda(short_offset_loss)([short_offset_true, short_offsets, kp_maps_true]))
-    losses.append(KL.Lambda(mid_offset_loss)([mid_offset_true, mid_offsets, kp_maps_true]))
-    losses.append(KL.Lambda(segmentation_loss)([seg_true, seg_mask, crowd_mask]))
-    losses.append(KL.Lambda(long_offset_loss)([long_offset_true, long_offsets, seg_true, crowd_mask, unannotated_mask, overlap_mask]))
-
-    return losses
-
-def get_personlab(train=False, input_tensors=None, with_preprocess_lambda=True, build_base_func=get_resnet101_base,
-                  intermediate_supervision=False, intermediate_layer=None, output_stride=config.OUTPUT_STRIDE):
+def PersonLab(config, train=False, input_tensor=None):
     '''
     Constructs the PersonLab model and returns the model object without compiling
 
     # Arguments:
-        train : (boolean) whether to construct the model for training (`False` if model is only for inference).abs
+        train : (boolean) whether to construct the model for training (`False` if model is only for inference).
             If `True`, the outputs of the network correspond to the losses described in the paper, which need to be
             supplied to the model via Model.add_loss() after this function is called.
             If `True`, the outputs are (1) the keypoint maps, (2) the short-range offsets, (3) the mid-range offsets,
@@ -192,22 +192,25 @@ def get_personlab(train=False, input_tensors=None, with_preprocess_lambda=True, 
     '''
     
     if train:
-        if input_tensors is None:
-            input_img = KL.Input(shape=config.IMAGE_SHAPE)
+        if input_tensor is None:
+            input_img = KL.Input(input_shape=config.IMAGE_SHAPE)
         else:
-            input_img = KL.Input(tensor=input_tensors[0])
+            input_img = KL.Input(tensor=input_tensor)
     else:
-        input_img = KL.Input(shape=(None, None, 3))
+        input_img = KL.Input(input_shape=(None, None, 3))
 
-    if isinstance(with_preprocess_lambda, KL.Lambda):
-        normalized_img = with_preprocess_lambda(input_img)
-    else:
+    if config.PREPROCESS_LAMBDA:
         normalized_img = KL.Lambda(lambda t: t/255. - 0.5)(input_img)
-
-    if with_preprocess_lambda not in [False, 0, None]:
-        base_model = build_base_func(input_tensor=normalized_img, output_stride=output_stride, return_model=True)
     else:
-        base_model = build_base_func(input_tensor=input_img, output_stride=output_stride, return_model=True)
+        normalized_img = input_img
+
+    
+    if config.BACKBONE.lower() not in ['resnet50']:
+        raise NotImplementedError()
+
+    if config.BACKBONE.lower() == 'resnet50':
+        base_model = ResNet50(input_tensor=normalized_img, output_stride=config.OUTPUT_STRIDE)
+    
     features = base_model.output
 
     if not train:
@@ -215,62 +218,22 @@ def get_personlab(train=False, input_tensors=None, with_preprocess_lambda=True, 
     else:
         img_shape = [config.IMAGE_SHAPE[0], config.IMAGE_SHAPE[1]]
 
-    if intermediate_supervision:
-        if intermediate_layer is None:
+    if config.INTERMEDIATE_SUPERVISION and train:
+        if config.INTER_LAYER is None:
             raise ValueError('Intemediate layer name must be supplied if using intermediate supervision!')
-        if intermediate_layer not in [l.name for l in base_model.layers]:
+        if config.INTER_LAYER not in [l.name for l in base_model.layers]:
             raise ValueError('Layer {} does not exist in the base network'.format(intermediate_layer))
         inter_features = base_model.get_layer(intermediate_layer).output
-        inter_outputs = build_personlab_head(inter_features, img_shape, id=1)
-    else:
-        inter_outputs = []
+        inter_outputs = build_personlab_head(inter_features, img_shape, suffix='inter')
+        inter_outputs = KL.Concatenate(axis=-1)(inter_outputs)
 
-    outputs = build_personlab_head(features, img_shape, id=intermediate_supervision+1)
-
-
+    outputs = build_personlab_head(features, img_shape, suffix=None)
     if train:
-        mask_shape = (config.IMAGE_SHAPE[0], config.IMAGE_SHAPE[1], 1)
+        sync_shapes(outputs)
+        outputs = KL.Concatenate(axis=-1)(outputs)
+        if config.INTERMEDIATE_SUPERVISION:
+            outputs = [outputs, inter_outputs]
         
-        if input_tensors is None:
-            crowd_mask = KL.Input(shape=mask_shape)
-            unannotated_mask = KL.Input(shape=mask_shape)
-            overlap_mask = KL.Input(shape=mask_shape)
-            kp_maps_true = KL.Input(shape=mask_shape[:2]+(config.NUM_KP,))
-            short_offset_true = KL.Input(shape=mask_shape[:2]+(2*config.NUM_KP,))
-            mid_offset_true = KL.Input(shape=mask_shape[:2]+(4*config.NUM_EDGES,))
-            seg_true = KL.Input(shape=mask_shape)
-            long_offset_true = KL.Input(shape=mask_shape[:2]+(2*config.NUM_KP,))
-        else:
-            kp_maps_true = KL.Input(tensor=input_tensors[1])
-            short_offset_true = KL.Input(tensor=input_tensors[2])
-            mid_offset_true = KL.Input(tensor=input_tensors[3])
-            long_offset_true = KL.Input(tensor=input_tensors[4])
-            seg_true = KL.Input(tensor=input_tensors[5])
-            crowd_mask = KL.Input(tensor=input_tensors[6])
-            unannotated_mask = KL.Input(tensor=input_tensors[7])
-            overlap_mask = KL.Input(tensor=input_tensors[8])
-        
-        ground_truth = [kp_maps_true, short_offset_true, mid_offset_true, long_offset_true, seg_true, crowd_mask, unannotated_mask, overlap_mask]
-        losses = get_losses(ground_truth, outputs)
+    model = KM.Model(inputs=input_img, outputs=outputs)
 
-        if intermediate_supervision:
-            inter_losses = get_losses(ground_truth, inter_outputs)
-        else:
-            inter_losses = []
-            
-        
-        model = KM.Model(inputs=[input_img,
-                                 kp_maps_true,
-                                 short_offset_true,
-                                 mid_offset_true,
-                                 long_offset_true,
-                                 seg_true,
-                                 crowd_mask,
-                                 unannotated_mask,
-                                 overlap_mask],
-                         outputs=inter_losses+losses)
-
-        return model
-
-    else:
-        return KM.Model(input_img, outputs=inter_outputs+outputs)
+    return model

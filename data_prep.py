@@ -13,7 +13,7 @@ def map_coco_to_personlab(keypoints):
     return keypoints[:, permute, :]
 
 def get_ground_truth(instance_masks, all_keypoints):
-    assert(instance_masks.shape[-1] == len(all_keypoints))
+    assert(instance_masks.shape[-1] == len(all_keypoints)), '{} != {}'.format(instance_masks.shape[-1], len(all_keypoints))
 
     discs = get_keypoint_discs(all_keypoints)
 
@@ -25,6 +25,7 @@ def get_ground_truth(instance_masks, all_keypoints):
     return kp_maps, short_offsets, mid_offsets, long_offsets
 
 def get_keypoint_discs(all_keypoints):
+    
     map_shape = (config.IMAGE_SHAPE[0], config.IMAGE_SHAPE[1])
     discs = [[] for _ in range(len(all_keypoints))]
     for i in range(config.NUM_KP):

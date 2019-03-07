@@ -7,17 +7,17 @@ from config import config, TransformationParams
 from data_prep import *
 from transformer import Transformer, AugmentSelection
 
-input_shapes = [
-                config.IMAGE_SHAPE,
-                (config.IMAGE_SHAPE[0],config.IMAGE_SHAPE[1], config.NUM_KP),
-                (config.IMAGE_SHAPE[0],config.IMAGE_SHAPE[1], 2*config.NUM_KP),
-                (config.IMAGE_SHAPE[0],config.IMAGE_SHAPE[1], 4*config.NUM_EDGES),
-                (config.IMAGE_SHAPE[0],config.IMAGE_SHAPE[1], 2*config.NUM_KP),
-                (config.IMAGE_SHAPE[0],config.IMAGE_SHAPE[1], 1),
-                (config.IMAGE_SHAPE[0],config.IMAGE_SHAPE[1], 1),
-                (config.IMAGE_SHAPE[0],config.IMAGE_SHAPE[1], 1),
-                (config.IMAGE_SHAPE[0],config.IMAGE_SHAPE[1], 1),
-            ]
+# input_shapes = [
+#                 config.IMAGE_SHAPE,
+#                 (config.IMAGE_SHAPE[0],config.IMAGE_SHAPE[1], config.NUM_KP),
+#                 (config.IMAGE_SHAPE[0],config.IMAGE_SHAPE[1], 2*config.NUM_KP),
+#                 (config.IMAGE_SHAPE[0],config.IMAGE_SHAPE[1], 4*config.NUM_EDGES),
+#                 (config.IMAGE_SHAPE[0],config.IMAGE_SHAPE[1], 2*config.NUM_KP),
+#                 (config.IMAGE_SHAPE[0],config.IMAGE_SHAPE[1], 1),
+#                 (config.IMAGE_SHAPE[0],config.IMAGE_SHAPE[1], 1),
+#                 (config.IMAGE_SHAPE[0],config.IMAGE_SHAPE[1], 1),
+#                 (config.IMAGE_SHAPE[0],config.IMAGE_SHAPE[1], 1),
+#             ]
 
 def read_data(datum, key):
 
@@ -67,15 +67,18 @@ def transform_data(img, encoding, kp):
         kp = [np.squeeze(k) for k in np.split(kp, kp.shape[0], axis=0)]
     kp_maps, short_offsets, mid_offsets, long_offsets = get_ground_truth(instance_masks, kp)
 
-    return [img.astype('float32'),
-            kp_maps.astype('float32'),
-            short_offsets.astype('float32'),
-            mid_offsets.astype('float32'),
-            long_offsets.astype('float32'),
-            seg_mask.astype('float32'),
-            crowd_mask.astype('float32'),
-            unannotated_mask.astype('float32'),
-            overlap_mask.astype('float32')]
+    input_tensor = img.astype('float32')
+    
+    output_tensor = np.concatenate([kp_maps.astype('float32'),
+                                short_offsets.astype('float32'),
+                                mid_offsets.astype('float32'),
+                                long_offsets.astype('float32'),
+                                seg_mask.astype('float32'),
+                                crowd_mask.astype('float32'),
+                                unannotated_mask.astype('float32'),
+                                overlap_mask.astype('float32')], axis=-1)
+
+    return [input_tensor, output_tensor]
 
 
 def data_gen():
@@ -93,7 +96,7 @@ def get_data_input_tensor(batch_size=16):
     with tf.device('/cpu:0'):
         tf_data = tf.data.Dataset.from_generator(data_gen, tf_types)
         tf_data = tf_data.map(lambda img, encoding, kp :
-                                tf.py_func(transform_data, [img, encoding, kp], 9*[tf.float32], stateful=False),
+                                tf.py_func(transform_data, [img, encoding, kp], 2*[tf.float32], stateful=False),
                                 num_parallel_calls=64)
         tf_data = tf_data.batch(batch_size)
         tf_data = tf_data.prefetch(10)

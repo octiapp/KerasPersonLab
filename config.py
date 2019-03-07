@@ -76,6 +76,29 @@ class config:
     INSTANCE_SEG_THRESH = 0.25
 
     #########
+    # MODEL CONFIG:
+    #########
+
+    # Base Network Architecture:
+    BACKBONE = 'resnet50'
+
+    # Whether to use intermediate supervision as suggested in the paper to speed the training process
+    INTERMEDIATE_SUPERVISION = False
+
+    # Layer after which to apply intermediate supervision
+    # This requires name associated with that layer in the base model. Consult the model function.
+    # This option creates a prediction branch after that layer on which the full loss is applied in addition
+    # to the loss on the output predictions. This is applied ONLY IF the model is constructed
+    # with train=True and config.INTERMEDIATE_SUPERVISION is also True.
+    INTER_LAYER = 'res4b12_relu'
+
+    # Number of Iterations to Refine Mid and Long Offsets
+    NUM_REFINEMENTS = 2
+
+    # Whether or not to include a preprocessing layer after the image to normalize
+    PREPROCESS_LAMBDA = True
+
+    #########
     # TRAINING CONFIGS:
     #########
 
@@ -104,7 +127,7 @@ class config:
     BATCH_NORM_FROZEN = True
 
     # Number of GPUs to distribute across
-    NUM_GPUS = 4
+    NUM_GPUS = 1
 
     # The total batch size will be (NUM_GPUS * BATCH_SIZE_PER_GPU)
     BATCH_SIZE_PER_GPU = 1
