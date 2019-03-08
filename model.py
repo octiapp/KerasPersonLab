@@ -152,8 +152,9 @@ def build_personlab_head(features, img_shape, suffix=''):
     long_offsets = KL.Lambda(lambda t: tf.image.resize_bilinear(t, img_shape, align_corners=True))(long_offsets)
     seg_mask = KL.Lambda(lambda t: tf.image.resize_bilinear(t, img_shape, align_corners=True))(seg_mask)
 
-    mid_offsets = KL.Lambda(refine_mid_offsets)([mid_offsets, short_offsets])
-    long_offsets = KL.Lambda(refine_long_offsets)([long_offsets, short_offsets])
+    if config.NUM_REFINEMENTS > 0:
+        mid_offsets = KL.Lambda(refine_mid_offsets)([mid_offsets, short_offsets])
+        long_offsets = KL.Lambda(refine_long_offsets)([long_offsets, short_offsets])
 
     outputs = [kp_maps, short_offsets, mid_offsets, long_offsets, seg_mask]
 

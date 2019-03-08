@@ -18,8 +18,7 @@ class AugmentSelection:
     def random():
         flip = random.uniform(0.,1.) > TransformationParams.flip_prob
         degree = random.uniform(-1.,1.) * TransformationParams.max_rotate_degree
-        scale = (TransformationParams.scale_max - TransformationParams.scale_min)*random.uniform(0.,1.)+TransformationParams.scale_min \
-            if random.uniform(0.,1.) < TransformationParams.scale_prob else 1.
+        scale = (TransformationParams.scale_max - TransformationParams.scale_min)*random.uniform(0.,1.)+TransformationParams.scale_min
         x_offset = int(random.uniform(-1.,1.) * TransformationParams.center_perterb_max);
         y_offset = int(random.uniform(-1.,1.) * TransformationParams.center_perterb_max);
 
@@ -45,7 +44,7 @@ class AugmentSelection:
         B = self.scale * sin(self.degree / 180. * pi )
 
         # scale_size = TransformationParams.target_dist / scale_self * self.scale
-        scale_size = TransformationParams.target_dist / self.scale
+        # scale_size = TransformationParams.target_dist / self.scale
 
         (width, height) = center
         center_x = width + self.crop[0]
@@ -59,9 +58,9 @@ class AugmentSelection:
                            [ -B, A, 0 ],
                            [  0, 0, 1. ] ])
 
-        scale = np.array( [[ scale_size, 0, 0 ],
-                           [ 0, scale_size, 0 ],
-                           [  0, 0, 1. ] ])
+        # scale = np.array( [[ scale_size, 0, 0 ],
+        #                    [ 0, scale_size, 0 ],
+        #                    [  0, 0, 1. ] ])
 
         flip = np.array( [[ -1 if self.flip else 1., 0., 0. ],
                           [ 0., 1., 0. ],
@@ -72,7 +71,7 @@ class AugmentSelection:
                                    [ 0., 0., 1. ]] )
 
         # order of combination is reversed
-        combined = center2center.dot(flip).dot(scale).dot(rotate).dot(center2zero)
+        combined = center2center.dot(flip).dot(rotate).dot(center2zero)
 
         return combined[0:2]
 

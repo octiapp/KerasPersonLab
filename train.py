@@ -7,6 +7,7 @@ from keras.models import load_model
 from keras.utils import multi_gpu_model
 from keras.optimizers import Adam
 from keras.callbacks import LambdaCallback
+from keras import layers as KL
 from keras import backend as KB
 
 from polyak_callback import PolyakMovingAverage
@@ -41,6 +42,11 @@ else:
 
 if LOAD_MODEL_FILE is not None:
     model.load_weights(LOAD_MODEL_FILE, by_name=True)
+
+if config.BATCH_NORM_FROZEN:
+    for layer in model.layers:
+        if isinstance(layer, KL.BatchNormalization):
+            layer.trainable = False
 
 if num_gpus > 1:
     parallel_model = multi_gpu_model(model, num_gpus)

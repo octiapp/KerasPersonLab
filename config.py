@@ -103,7 +103,7 @@ class config:
     #########
 
     # Input shape for training images (By convention s*n+1 for some integer n and s=output_stride)
-    IMAGE_SHAPE = (401, 401, 3)
+    IMAGE_SHAPE = (801, 801, 3)
 
     # Output stride of the base network (resnet101 or resnet152 in the paper)
     # [Any convolutional stride in the original network which would reduce the 
@@ -127,7 +127,7 @@ class config:
     BATCH_NORM_FROZEN = True
 
     # Number of GPUs to distribute across
-    NUM_GPUS = 1
+    NUM_GPUS = 4
 
     # The total batch size will be (NUM_GPUS * BATCH_SIZE_PER_GPU)
     BATCH_SIZE_PER_GPU = 1
@@ -147,10 +147,10 @@ class config:
 
 class TransformationParams:
 
-    target_dist = 0.8
+    target_dist = 1.
     scale_prob = 1.
-    scale_min = 0.8
-    scale_max = 2.0
-    max_rotate_degree = 25.
-    center_perterb_max = 0.
+    scale_min = 0.5
+    scale_max = 1.5
+    max_rotate_degree = 20.
+    center_perterb_max = 80.
     flip_prob = 0.5
