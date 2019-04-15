@@ -7,8 +7,8 @@ from tqdm import tqdm
 
 from config import config
 
-ANNO_FILE = ''
-IMG_DIR = ''
+ANNO_FILE = '/data/coco/annotations/person_keypoints_train2017.json'
+IMG_DIR = '/data/coco/train2017'
 
 coco = COCO(ANNO_FILE)
 img_ids = list(coco.imgs.keys())
@@ -30,6 +30,8 @@ for i, img_id in enumerate(tqdm(img_ids)):
     if len(img_anns) == 0:
         continue
     for anno in img_anns:
+	if anno['area']==0:
+	    continue
         mask = coco.annToMask(anno)
 
         # if crowd, don't compute loss

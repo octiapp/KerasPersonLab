@@ -139,12 +139,12 @@ def build_personlab_head(features, img_shape, suffix=''):
     else:
         sfx = '_'+str(suffix)
 
-    kp_maps = KL.Conv2D(config.NUM_KP, kernel_size=(1,1), activation='sigmoid', name='kp_maps'+sfx)(features)
-    short_offsets = KL.Conv2D(2*config.NUM_KP, kernel_size=(1,1), name='short_offsets'+sfx)(features)
-    mid_offsets = KL.Conv2D(4*(config.NUM_EDGES), kernel_size=(1,1), name='mid_offsets'+sfx)(features)
+    kp_maps = KL.Conv2D(config.NUM_KP, kernel_size=(1,1), use_bias=True, activation='sigmoid', name='kp_maps'+sfx)(features)
+    short_offsets = KL.Conv2D(2*config.NUM_KP, kernel_size=(1,1), use_bias=True, name='short_offsets'+sfx)(features)
+    mid_offsets = KL.Conv2D(4*(config.NUM_EDGES), kernel_size=(1,1), use_bias=True, name='mid_offsets'+sfx)(features)
 
-    seg_mask = KL.Conv2D(1, kernel_size=(1,1), activation='sigmoid', name='segmentation'+sfx)(features)
-    long_offsets = KL.Conv2D(2*config.NUM_KP, kernel_size=(1,1), name='long_offsets'+sfx)(features)
+    seg_mask = KL.Conv2D(1, kernel_size=(1,1), use_bias=True, activation='sigmoid', name='segmentation'+sfx)(features)
+    long_offsets = KL.Conv2D(2*config.NUM_KP, kernel_size=(1,1), use_bias=True, name='long_offsets'+sfx)(features)
 
     kp_maps = KL.Lambda(lambda t: tf.image.resize_bilinear(t, img_shape, align_corners=True))(kp_maps)
     short_offsets = KL.Lambda(lambda t: tf.image.resize_bilinear(t, img_shape, align_corners=True))(short_offsets)
