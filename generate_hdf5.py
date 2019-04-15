@@ -30,6 +30,8 @@ for i, img_id in enumerate(tqdm(img_ids)):
     if len(img_anns) == 0:
         continue
     for anno in img_anns:
+	if anno['area']==0:
+	    continue
         mask = coco.annToMask(anno)
 
         # if crowd, don't compute loss
